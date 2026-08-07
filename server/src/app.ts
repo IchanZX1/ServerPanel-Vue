@@ -12,6 +12,7 @@ import dashboardRouter from './modules/dashboard/dashboard.router.js'
 import serverRouter from './modules/server/server.router.js'
 import invoiceRouter from './modules/invoice/invoice.router.js'
 import paymentRouter from './modules/payment/payment.router.js'
+import orderRouter from './modules/order/order.router.js'
 import contactRouter from './modules/contact/contact.router.js'
 import voucherRouter from './modules/voucher/voucher.router.js'
 import adminRouter from './modules/admin/admin.router.js'
@@ -47,6 +48,7 @@ app.use('/api/dashboard', dashboardRouter)
 app.use('/api/server',    serverRouter)
 app.use('/api/invoice',   invoiceRouter)
 app.use('/api/payment',   paymentRouter)
+app.use('/api/order',     orderRouter)
 app.use('/api/contact',   contactRouter)
 app.use('/api/vouchers',    voucherRouter)
 app.use('/api/admin',      adminApiRouter)

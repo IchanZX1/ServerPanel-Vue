@@ -4,7 +4,7 @@ import api from '../api'
 import type { StatItem, ServerItem } from '../data/dummyData'
 
 export const useDashboardStore = defineStore('dashboard', () => {
-  const loading = ref(false)
+  const loading = ref(true)
   const error = ref<string | null>(null)
 
   const userName = ref('')

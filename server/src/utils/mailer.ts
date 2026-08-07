@@ -90,6 +90,26 @@ export function mailRenewalConfirmed(
   `
 }
 
+export function mailNewServerProvisioned(
+  name: string,
+  serverName: string,
+  ipAddress: string,
+  activeUntil: string,
+  dashboardUrl: string,
+): string {
+  return `
+    <h2>Server Baru Aktif</h2>
+    <p>Halo ${name},</p>
+    <p>Server <strong>${serverName}</strong> Anda berhasil diaktifkan.</p>
+    <ul>
+      <li>Alamat: <strong>${ipAddress}</strong></li>
+      <li>Aktif hingga: <strong>${activeUntil}</strong></li>
+    </ul>
+    <p>Detail login panel dikirim saat provisioning. Hubungi kami jika perlu bantuan.</p>
+    <p><a href="${dashboardUrl}">Lihat Dashboard</a></p>
+  `
+}
+
 export function mailServerTerminated(
   name: string,
   serverName: string,

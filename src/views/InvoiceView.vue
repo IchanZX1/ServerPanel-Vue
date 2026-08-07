@@ -2,6 +2,7 @@
 import { onMounted } from 'vue'
 import { CreditCard } from 'lucide-vue-next'
 import { useInvoiceStore } from '../stores/invoice'
+import Skeleton from '../components/ui/Skeleton.vue'
 
 const store = useInvoiceStore()
 
@@ -25,8 +26,18 @@ function statusLabel(status: string) {
     </div>
 
     <!-- Loading -->
-    <div v-if="store.loading" class="empty-state-card">
-      <p class="state-desc">Memuat data invoice...</p>
+    <div v-if="store.loading" class="invoice-list">
+      <div v-for="i in 4" :key="i" class="invoice-row">
+        <div class="inv-left">
+          <Skeleton width="120px" height="14px" radius="6px" />
+          <Skeleton width="160px" height="12px" radius="6px" />
+        </div>
+        <div class="inv-right">
+          <Skeleton width="90px" height="14px" radius="6px" />
+          <Skeleton width="70px" height="20px" radius="6px" />
+          <Skeleton width="90px" height="12px" radius="6px" />
+        </div>
+      </div>
     </div>
 
     <!-- Empty -->

@@ -16,6 +16,7 @@ import {
 import type { ProductItem } from '../../data/dummyData'
 import { useAuthStore } from '../../stores/auth'
 import api from '../../api'
+import Skeleton from '../ui/Skeleton.vue'
 
 const props = defineProps<{
   isOpen: boolean
@@ -29,6 +30,7 @@ const emit = defineEmits<{
 
 const router = useRouter()
 const authStore = useAuthStore()
+const isDev = import.meta.env.DEV
 
 // Form States
 const step = ref<'form' | 'payment' | 'expired' | 'success'>('form')
@@ -48,7 +50,17 @@ const provisionedServer = ref<{
   credentials: { panelUrl: string; username: string; password: string }
 } | null>(null)
 
-// Countdown timer state (5 minutes = 300 seconds)
+// Real payment state (Maelyn QRIS)
+const paymentId = ref<string | null>(null)
+const invoiceId = ref<string | null>(null)
+const redirectUrl = ref<string | null>(null)
+const qrBase64 = ref<string | null>(null)
+const paymentLoading = ref(false)
+const paymentError = ref<string | null>(null)
+const checkingStatus = ref(false)
+let pollInterval: ReturnType<typeof setInterval> | null = null
+
+// Countdown timer state (default 5 minutes = 300 seconds)
 const INITIAL_TIMER = 300 // 5 minutes in seconds
 const timeLeft = ref(INITIAL_TIMER)
 let timerInterval: ReturnType<typeof setInterval> | null = null
@@ -80,14 +92,15 @@ const formattedTimer = computed(() => {
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
 })
 
-const startTimer = () => {
+const startTimer = (seconds: number = INITIAL_TIMER) => {
   stopTimer()
-  timeLeft.value = INITIAL_TIMER
+  timeLeft.value = seconds
   timerInterval = setInterval(() => {
     if (timeLeft.value > 0) {
       timeLeft.value--
     } else {
       stopTimer()
+      stopPolling()
       step.value = 'expired'
     }
   }, 1000)
@@ -98,6 +111,17 @@ const stopTimer = () => {
     clearInterval(timerInterval)
     timerInterval = null
   }
+}
+
+const resetPaymentState = () => {
+  stopPolling()
+  paymentId.value = null
+  invoiceId.value = null
+  redirectUrl.value = null
+  qrBase64.value = null
+  paymentLoading.value = false
+  paymentError.value = null
+  checkingStatus.value = false
 }
 
 // Reset form on open
@@ -111,9 +135,11 @@ watch(
       durationMonths.value = 1
       provisionError.value = null
       provisionedServer.value = null
+      resetPaymentState()
       stopTimer()
     } else {
       stopTimer()
+      resetPaymentState()
     }
   }
 )
@@ -121,7 +147,122 @@ watch(
 const handleProceedToPayment = () => {
   if (!serverName.value || !email.value) return
   step.value = 'payment'
-  startTimer()
+  void createOrder()
+}
+
+const createOrder = async () => {
+  if (paymentLoading.value) return
+  paymentLoading.value = true
+  paymentError.value = null
+  try {
+    const { data } = await api.post('/api/order/create', {
+      productId: props.product?.id,
+      name: serverName.value,
+      months: durationMonths.value,
+    })
+    const d = data.data
+    paymentId.value = d.paymentId
+    invoiceId.value = d.invoiceId
+    redirectUrl.value = d.redirectUrl ?? null
+    qrBase64.value = d.qrBase64 ?? null
+    const secondsLeft = Math.max(
+      1,
+      Math.ceil((new Date(d.expiredAt).getTime() - Date.now()) / 1000),
+    )
+    startTimer(secondsLeft)
+    startPolling()
+  } catch (err: unknown) {
+    const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+      ?? 'Gagal membuat pembayaran. Coba lagi.'
+    paymentError.value = msg
+  } finally {
+    paymentLoading.value = false
+  }
+}
+
+const refreshQr = async () => {
+  if (!invoiceId.value || paymentLoading.value) return
+  paymentLoading.value = true
+  paymentError.value = null
+  try {
+    const { data } = await api.post('/api/payment/qris', { invoiceId: invoiceId.value })
+    qrBase64.value = data.data?.qrBase64 ?? null
+    if (!qrBase64.value) paymentError.value = 'QR tidak tersedia. Silakan hubungi admin.'
+  } catch (err: unknown) {
+    const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+      ?? 'Gagal memuat QR.'
+    paymentError.value = msg
+  } finally {
+    paymentLoading.value = false
+  }
+}
+
+const startPolling = () => {
+  stopPolling()
+  void pollStatus()
+  pollInterval = setInterval(() => {
+    void pollStatus()
+  }, 10000)
+}
+
+const stopPolling = () => {
+  if (pollInterval) {
+    clearInterval(pollInterval)
+    pollInterval = null
+  }
+}
+
+const pollStatus = async () => {
+  if (checkingStatus.value || !paymentId.value) return
+  checkingStatus.value = true
+  try {
+    const { data } = await api.post('/api/payment/status', { paymentId: paymentId.value })
+    const s = data.data
+    if (s.status === 'paid') {
+      stopTimer()
+      stopPolling()
+      provisionedServer.value = mapProvision(s.provision)
+      step.value = 'success'
+      emit('provisioned')
+    } else if (['expired', 'failed', 'cancelled'].includes(s.status)) {
+      stopTimer()
+      stopPolling()
+      step.value = 'expired'
+    }
+  } catch {
+    // Abaikan — polling berikutnya akan mencoba lagi
+  } finally {
+    checkingStatus.value = false
+  }
+}
+
+const mapProvision = (provision: unknown) => {
+  const p = provision as {
+    serverId?: string
+    name?: string
+    pterodactylServerId?: number
+    ipAddress?: string
+    activeUntil?: string
+    credentials?: { panelUrl?: string; username?: string; password?: string }
+  } | null
+  if (!p?.serverId) return null
+  return {
+    serverId: p.serverId,
+    name: p.name ?? '',
+    pterodactylServerId: p.pterodactylServerId ?? 0,
+    ipAddress: p.ipAddress ?? '',
+    activeUntil: p.activeUntil ?? '',
+    credentials: {
+      panelUrl: p.credentials?.panelUrl ?? '',
+      username: p.credentials?.username ?? '',
+      password: p.credentials?.password ?? '',
+    },
+  }
+}
+
+const retryCreateOrder = () => {
+  paymentError.value = null
+  void createOrder()
 }
 
 const handleSimulateSuccess = async () => {
@@ -136,6 +277,7 @@ const handleSimulateSuccess = async () => {
     })
     provisionedServer.value = data.data
     stopTimer()
+    stopPolling()
     step.value = 'success'
     emit('provisioned')
   } catch (err: unknown) {
@@ -149,6 +291,7 @@ const handleSimulateSuccess = async () => {
 
 const handleClose = () => {
   stopTimer()
+  resetPaymentState()
   emit('close')
 }
 
@@ -159,6 +302,7 @@ const handleGoToDashboard = () => {
 
 onUnmounted(() => {
   stopTimer()
+  stopPolling()
 })
 </script>
 
@@ -299,34 +443,77 @@ onUnmounted(() => {
               </div>
             </div>
 
-            <!-- QRIS / Payment Graphic Dummy -->
+            <!-- QRIS / Real Maelyn Payment -->
             <div class="qris-card">
               <div class="qris-header">
                 <QrCode :size="20" />
                 <span>Scan QRIS Payment</span>
               </div>
               <div class="qr-placeholder">
-                <!-- SVG QR Code Dummy -->
-                <svg width="140" height="140" viewBox="0 0 140 140" fill="none">
-                  <rect width="140" height="140" rx="12" fill="#ffffff" />
-                  <path d="M20 20h35v35H20zM85 20h35v35H85zM20 85h35v35H20z" fill="#0b1120" />
-                  <path d="M28 28h19v19H28zM93 28h19v19H93zM28 93h19v19H28z" fill="#ffffff" />
-                  <path d="M65 20h10v20H65zM20 65h20v10H20zM65 65h35v10H65zM85 85h20v20H85zM105 105h15v15h-15zM65 105h10v15H65z" fill="#0b1120" />
-                </svg>
+                <div v-if="paymentLoading" class="qr-skeleton">
+                  <Skeleton width="190px" height="190px" radius="12px" />
+                </div>
+                <img
+                  v-else-if="qrBase64"
+                  :src="qrBase64"
+                  width="190"
+                  height="190"
+                  alt="QRIS Maelyn"
+                  class="qr-image"
+                />
+                <div v-else class="qr-missing">
+                  <AlertCircle :size="28" />
+                  <span>QR tidak tersedia saat ini.</span>
+                </div>
               </div>
               <span class="qris-sub">Supports Gopay, OVO, Dana, ShopeePay & All Banks</span>
+              <a v-if="redirectUrl" :href="redirectUrl" target="_blank" rel="noopener" class="qris-link">
+                Buka halaman pembayaran jika QR tidak muncul
+              </a>
             </div>
 
-            <!-- Action simulation buttons -->
+            <!-- Action buttons -->
             <div class="payment-actions">
-              <button class="simulate-success-btn" @click="handleSimulateSuccess" :disabled="provisioning">
+              <button
+                v-if="isDev"
+                class="simulate-success-btn"
+                @click="handleSimulateSuccess"
+                :disabled="provisioning"
+              >
                 <CheckCircle2 :size="18" />
                 <span>{{ provisioning ? 'Membuat Server...' : 'Simulate Instant Payment (Dev)' }}</span>
               </button>
+              <button
+                class="check-status-btn"
+                @click="pollStatus"
+                :disabled="checkingStatus || !paymentId"
+              >
+                <Clock :size="18" />
+                <span>{{ checkingStatus ? 'Mengecek status...' : 'Saya Sudah Bayar' }}</span>
+              </button>
               <button class="cancel-btn" @click="handleClose" :disabled="provisioning">Cancel</button>
             </div>
+            <p v-if="paymentError" class="provision-error">
+              {{ paymentError }}
+              <button
+                v-if="!paymentId"
+                class="error-retry"
+                @click="retryCreateOrder"
+                :disabled="paymentLoading"
+              >
+                Coba lagi
+              </button>
+              <button
+                v-else-if="!qrBase64"
+                class="error-retry"
+                @click="refreshQr"
+                :disabled="paymentLoading"
+              >
+                Muat ulang QR
+              </button>
+            </p>
             <p v-if="provisionError" class="provision-error">{{ provisionError }}</p>
-            <p class="dev-note">Mode development: klik tombol di atas untuk membuat server tanpa pembayaran.</p>
+            <p v-if="isDev" class="dev-note">Mode development: tombol simulate membuat server tanpa pembayaran.</p>
           </div>
 
           <!-- STEP 3: TRANSACTION EXPIRED STATE -->
@@ -725,10 +912,85 @@ onUnmounted(() => {
   text-align: center;
 }
 
+.qr-image {
+  display: block;
+  image-rendering: pixelated;
+}
+
+.qr-skeleton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 190px;
+  height: 190px;
+}
+
+.qr-missing {
+  width: 190px;
+  height: 190px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #64748b;
+  font-size: 12px;
+  text-align: center;
+}
+
+.qr-link {
+  font-size: 11px;
+  color: #00a3ff;
+  text-decoration: underline;
+  text-align: center;
+  word-break: break-all;
+}
+
 .payment-actions {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.check-status-btn {
+  width: 100%;
+  padding: 12px;
+  border-radius: 10px;
+  background: #00875a;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: var(--transition-fast);
+}
+
+.check-status-btn:hover {
+  background: #00a36c;
+}
+
+.check-status-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.error-retry {
+  margin-left: 6px;
+  color: #00a3ff;
+  text-decoration: underline;
+  font-size: 12px;
+  transition: var(--transition-fast);
+}
+
+.error-retry:hover {
+  color: #4db8ff;
+}
+
+.error-retry:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .simulate-success-btn {

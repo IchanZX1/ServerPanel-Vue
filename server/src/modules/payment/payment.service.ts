@@ -1,4 +1,5 @@
 import { v4 as uuid } from 'uuid'
+import QRCode from 'qrcode'
 import { env } from '../../config/env.js'
 import { safeRedisGet, safeRedisSet } from '../../config/redis.js'
 import { db } from '../../config/db.js'
@@ -13,6 +14,7 @@ export async function createSociabuzzPayment(data: {
   userId: string
   amount: number
   description: string
+  paymentType?: 'new_order' | 'renewal' | 'upgrade'
 }): Promise<{
   paymentId: string
   orderId: string
@@ -23,48 +25,78 @@ export async function createSociabuzzPayment(data: {
 }> {
   const orderId = `PSV2-${uuid().slice(0, 8).toUpperCase()}`
 
-  const res = await fetch(`${env.MAELYN_BASE_URL}/v1/create`, {
+  const [userRows] = await db.execute<RowDataPacket[]>(
+    `SELECT name, username, email FROM users WHERE id = ? LIMIT 1`,
+    [data.userId],
+  )
+  const user = userRows[0] as { name: string; username: string; email: string } | undefined
+  if (!user) throw new Error('User tidak ditemukan')
+
+  const res = await fetch(`${env.MAELYN_BASE_URL}/payment/sociabuzz/create/payment`, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${env.MAELYN_API_KEY}`,
+      'x-maelyn-auth': env.MAELYN_API_KEY,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      order_id: orderId,
+      username: user.username,
+      fullname: user.name,
+      email: user.email,
       amount: data.amount,
       description: data.description,
-      expired_time: 3600, // 1 jam dalam detik
     }),
   })
 
   if (!res.ok) {
-    const err = await res.text()
-    throw new Error(`Maelyn createPayment failed: ${res.status} ${err}`)
+    const raw = await res.text()
+    let message = `Maelyn createPayment failed: ${res.status}`
+    try {
+      const body = JSON.parse(raw) as { message?: string }
+      if (body.message) message = `Maelyn: ${body.message}`
+    } catch { /* ignore non-JSON */ }
+    throw new Error(message)
   }
 
   const json = await res.json() as {
-    order_id: string
-    inv_id: string
-    redirect_url: string
-    qr_string?: string
-    expired_at: string
+    success: boolean
+    payment: {
+      order_id: string
+      inv_id: string
+      amount: string
+      qr_string: string
+      expiration_date: string
+      expired_at: number | string
+      redirect_url: string
+    }
   }
 
-  // Simpan qr_string di Redis (bukan DB) dengan TTL sesuai expired_at
+  const payment = json.payment
+  const expiredTtl = typeof payment.expired_at === 'number'
+    ? payment.expired_at
+    : Math.max(Math.floor((new Date(payment.expired_at).getTime() - Date.now()) / 1000), 60)
+  const expiredAt = new Date(Date.now() + expiredTtl * 1000)
+
+  // Simpan qr_string (konten QRIS mentah) di Redis dengan TTL; PNG QR dibuat on-demand.
   let qrBase64: string | null = null
-  if (json.qr_string) {
-    const ttl = Math.floor((new Date(json.expired_at).getTime() - Date.now()) / 1000)
-    await safeRedisSet(`qr:${data.invoiceId}`, json.qr_string, Math.max(ttl, 60))
-    qrBase64 = `data:image/png;base64,${Buffer.from(json.qr_string).toString('base64')}`
+  if (payment.qr_string) {
+    await safeRedisSet(`qr:${data.invoiceId}`, payment.qr_string, expiredTtl)
+    try {
+      qrBase64 = await QRCode.toDataURL(payment.qr_string)
+    } catch (err) {
+      logger.error({ err }, '[payment] qr encode failed')
+    }
   }
 
   // Simpan payment ke DB
   const paymentId = uuid()
   await db.execute(
     `INSERT INTO payments
-     (id, invoice_id, user_id, order_id, inv_id, amount, redirect_url, status, poll_count)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 0)`,
-    [paymentId, data.invoiceId, data.userId, orderId, json.inv_id, data.amount, json.redirect_url],
+     (id, invoice_id, user_id, order_id, inv_id, amount, redirect_url, status, poll_count, payment_type, expired_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?)`,
+    [
+      paymentId, data.invoiceId, data.userId, orderId, payment.inv_id,
+      data.amount, payment.redirect_url, data.paymentType ?? 'new_order', expiredAt,
+    ],
   )
 
   // Update invoice.active_payment_id
@@ -76,17 +108,22 @@ export async function createSociabuzzPayment(data: {
   return {
     paymentId,
     orderId,
-    invId: json.inv_id,
-    redirectUrl: json.redirect_url,
+    invId: payment.inv_id,
+    redirectUrl: payment.redirect_url,
     qrBase64,
-    expiredAt: json.expired_at,
+    expiredAt: expiredAt.toISOString(),
   }
 }
 
 export async function getQrString(invoiceId: string): Promise<string | null> {
   const qrString = await safeRedisGet(`qr:${invoiceId}`)
   if (!qrString) return null
-  return `data:image/png;base64,${Buffer.from(qrString).toString('base64')}`
+  try {
+    return await QRCode.toDataURL(qrString)
+  } catch (err) {
+    logger.error({ err, invoiceId }, '[payment] qr encode failed')
+    return null
+  }
 }
 
 export async function checkPaymentStatus(paymentId: string, userId: string): Promise<{
@@ -94,6 +131,7 @@ export async function checkPaymentStatus(paymentId: string, userId: string): Pro
   status: string
   amount: number
   paidAt: string | null
+  provision: unknown
 }> {
   const [rows] = await db.execute<RowDataPacket[]>(
     `SELECT p.*, i.status as invoice_status
@@ -112,16 +150,39 @@ export async function checkPaymentStatus(paymentId: string, userId: string): Pro
   // Jika masih pending — poll Maelyn
   if (payment.status === 'pending') {
     await pollPaymentStatus(payment.id, payment.invoice_id, payment.redirect_url, payment.poll_count)
-    // Re-fetch status terbaru
     const [updatedRows] = await db.execute<RowDataPacket[]>(
-      'SELECT id, status, amount, paid_at FROM payments WHERE id = ? LIMIT 1',
+      'SELECT id, status, amount, paid_at, invoice_id FROM payments WHERE id = ? LIMIT 1',
       [paymentId],
     )
-    const updated = updatedRows[0] as { id: string; status: string; amount: number; paid_at: string | null }
-    return { paymentId: updated.id, status: updated.status, amount: updated.amount, paidAt: updated.paid_at }
+    const updated = updatedRows[0] as {
+      id: string; status: string; amount: number; paid_at: string | null; invoice_id: string
+    }
+    return {
+      paymentId: updated.id,
+      status: updated.status,
+      amount: updated.amount,
+      paidAt: updated.paid_at,
+      provision: updated.status === 'paid' ? await getProvisionResult(updated.invoice_id) : null,
+    }
   }
 
-  return { paymentId: payment.id, status: payment.status, amount: payment.amount, paidAt: payment.paid_at }
+  return {
+    paymentId: payment.id,
+    status: payment.status,
+    amount: payment.amount,
+    paidAt: payment.paid_at,
+    provision: payment.status === 'paid' ? await getProvisionResult(payment.invoice_id) : null,
+  }
+}
+
+async function getProvisionResult(invoiceId: string): Promise<unknown> {
+  const raw = await safeRedisGet(`order-result:${invoiceId}`)
+  if (!raw) return null
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -184,10 +245,13 @@ export async function markPaymentPaid(paymentId: string, invoiceId: string): Pro
 
 /**
  * Proses yang dijalankan setelah invoice paid:
+ * - Provision server baru (new_order)
  * - Apply renewal (unsuspend jika suspended)
  * - Apply upgrade
  */
 async function processAfterPayment(invoiceId: string): Promise<void> {
+  await processNewOrder(invoiceId)
+
   // Cek renewal request
   const [renewalRows] = await db.execute<RowDataPacket[]>(
     `SELECT srr.*, s.status as server_status, s.pterodactyl_server_id,
@@ -307,5 +371,72 @@ async function processAfterPayment(invoiceId: string): Promise<void> {
     } catch (err) {
       logger.error({ err }, '[payment] upgrade apply failed')
     }
+  }
+}
+
+/**
+ * Provision server baru untuk invoice pembelian (invoice_items.server_id masih NULL).
+ * Hasil provisioning disimpan sementara di Redis agar bisa diambil frontend.
+ */
+async function processNewOrder(invoiceId: string): Promise<void> {
+  const [invRows] = await db.execute<RowDataPacket[]>(
+    'SELECT user_id FROM invoices WHERE id = ? LIMIT 1',
+    [invoiceId],
+  )
+  const invoice = invRows[0] as { user_id: string } | undefined
+  if (!invoice) return
+
+  const [itemRows] = await db.execute<RowDataPacket[]>(
+    `SELECT ii.id, ii.product_id, ii.quantity, ii.description
+     FROM invoice_items ii
+     WHERE ii.invoice_id = ? AND ii.server_id IS NULL LIMIT 1`,
+    [invoiceId],
+  )
+  const item = itemRows[0] as {
+    id: string; product_id: string; quantity: number; description: string
+  } | undefined
+  if (!item) return
+
+  const nameMatch = item.description.match(/"([^"]+)"/)
+  const serverName = nameMatch ? nameMatch[1] : item.description.split(' — ')[0].trim()
+
+  try {
+    const { provisionNewServer } = await import('../pterodactyl/provision.service.js')
+    const result = await provisionNewServer({
+      userId: invoice.user_id,
+      productId: item.product_id,
+      name: serverName,
+      months: item.quantity,
+    })
+
+    await db.execute(
+      'UPDATE invoice_items SET server_id = ?, updated_at = NOW() WHERE id = ?',
+      [result.serverId, item.id],
+    )
+
+    await safeRedisSet(`order-result:${invoiceId}`, JSON.stringify(result), 86400)
+
+    const [userRows] = await db.execute<RowDataPacket[]>(
+      'SELECT email, name FROM users WHERE id = ? LIMIT 1',
+      [invoice.user_id],
+    )
+    const user = userRows[0] as { email: string; name: string } | undefined
+
+    if (user) {
+      const { sendMail, mailNewServerProvisioned } = await import('../../utils/mailer.js')
+      sendMail({
+        to: user.email,
+        subject: 'Server Baru Aktif',
+        html: mailNewServerProvisioned(
+          user.name,
+          result.name,
+          result.ipAddress,
+          result.activeUntil,
+          'http://localhost:5173/dashboard',
+        ),
+      })
+    }
+  } catch (err) {
+    logger.error({ err, invoiceId }, '[payment] new-order provision failed')
   }
 }

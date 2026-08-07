@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { Search, Trash2 } from 'lucide-vue-next'
 import api from '../../api'
 import { useAdminHeaders } from '../../composables/useAdminHeaders'
+import TableSkeleton from '../../components/ui/TableSkeleton.vue'
 
 const { getHeaders } = useAdminHeaders()
 
@@ -53,7 +54,7 @@ onMounted(fetchUsers)
       </div>
     </div>
 
-    <div v-if="loading" class="loading">Memuat...</div>
+    <div v-if="loading" class="table-wrap"><TableSkeleton :rows="6" /></div>
     <div v-else-if="error" class="error-msg">{{ error }}</div>
     <div v-else class="table-wrap">
       <table class="data-table">

@@ -178,7 +178,7 @@ export async function createInvoiceItem(data: {
   id: string
   invoiceId: string
   productId: string
-  serverId: string
+  serverId: string | null
   description: string
   quantity: number
   unitPrice: number
@@ -186,7 +186,7 @@ export async function createInvoiceItem(data: {
 }): Promise<void> {
   await db.execute(
     `INSERT INTO invoice_items
-     (id, invoice_id, product_id, server_id, description, quantity, unit_price, total)
+     (id, invoice_id, product_id, server_id, description, quantity, unit_price, total_price)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       data.id, data.invoiceId, data.productId, data.serverId,

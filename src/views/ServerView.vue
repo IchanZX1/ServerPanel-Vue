@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import ProductCard from '../components/server/ProductCard.vue'
 import OrderModal from '../components/server/OrderModal.vue'
+import Skeleton from '../components/ui/Skeleton.vue'
 import { useServerStore } from '../stores/server'
 import type { ProductItem } from '../data/dummyData'
 
@@ -36,20 +37,24 @@ onMounted(() => serverStore.fetchProducts())
     </div>
 
     <div class="products-grid">
-      <ProductCard
-        v-for="product in serverStore.products"
-        :key="product.id"
-        :product="product"
-        @buy="handleOpenOrderModal(product)"
-      />
+      <template v-if="serverStore.loading">
+        <div v-for="i in 4" :key="i" class="product-skeleton">
+          <Skeleton width="100%" height="200px" radius="16px" />
+        </div>
+      </template>
+      <template v-else>
+        <ProductCard
+          v-for="product in serverStore.products"
+          :key="product.id"
+          :product="product"
+          @buy="handleOpenOrderModal(product)"
+        />
+      </template>
     </div>
 
     <!-- Empty state -->
     <div v-if="!serverStore.loading && serverStore.productsEmpty" class="empty-state">
       <p>Tidak ada produk tersedia saat ini.</p>
-    </div>
-    <div v-if="serverStore.loading" class="empty-state">
-      <p>Memuat produk...</p>
     </div>
 
     <!-- Modal Order Pop-up -->
@@ -91,6 +96,10 @@ onMounted(() => serverStore.fetchProducts())
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 20px;
+}
+
+.product-skeleton {
+  display: flex;
 }
 
 @media (max-width: 1200px) {

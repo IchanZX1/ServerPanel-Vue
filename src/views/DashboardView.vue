@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { Plus } from 'lucide-vue-next'
 import StatCard from '../components/dashboard/StatCard.vue'
 import ServerCard from '../components/dashboard/ServerCard.vue'
+import Skeleton from '../components/ui/Skeleton.vue'
 import OrderModal from '../components/server/OrderModal.vue'
 import ServerDetailsModal from '../components/dashboard/ServerDetailsModal.vue'
 import { useDashboardStore } from '../stores/dashboard'
@@ -58,11 +59,20 @@ onMounted(async () => {
 
     <!-- Statistic Cards Grid (4 columns) -->
     <div class="stats-grid">
-      <StatCard
-        v-for="stat in dashboardStore.stats"
-        :key="stat.id"
-        :stat="stat"
-      />
+      <template v-if="dashboardStore.loading">
+        <div v-for="i in 4" :key="i" class="stat-skeleton-card">
+          <Skeleton width="110px" height="13px" radius="6px" />
+          <div class="stat-skeleton-gap" />
+          <Skeleton width="80px" height="28px" radius="8px" />
+        </div>
+      </template>
+      <template v-else>
+        <StatCard
+          v-for="stat in dashboardStore.stats"
+          :key="stat.id"
+          :stat="stat"
+        />
+      </template>
     </div>
 
     <!-- My Server Section -->
@@ -76,12 +86,19 @@ onMounted(async () => {
       </div>
 
       <div class="servers-grid">
-        <ServerCard
-          v-for="server in dashboardStore.servers"
-          :key="server.id"
-          :server="server"
-          @select="handleSelectServer"
-        />
+        <template v-if="dashboardStore.loading">
+          <div v-for="i in 2" :key="i" class="server-skeleton-card">
+            <Skeleton width="100%" height="150px" radius="16px" />
+          </div>
+        </template>
+        <template v-else>
+          <ServerCard
+            v-for="server in dashboardStore.servers"
+            :key="server.id"
+            :server="server"
+            @select="handleSelectServer"
+          />
+        </template>
       </div>
     </div>
 
@@ -175,6 +192,23 @@ onMounted(async () => {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 20px;
+}
+
+.stat-skeleton-card {
+  background: var(--panel-bg-card);
+  border: 1px solid var(--panel-border-card);
+  border-radius: 16px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.stat-skeleton-gap {
+  height: 10px;
+}
+
+.server-skeleton-card {
+  display: flex;
 }
 
 /* Responsive Grid Breakpoints */

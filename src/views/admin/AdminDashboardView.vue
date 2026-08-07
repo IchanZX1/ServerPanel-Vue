@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import api from '../../api'
 import { useAdminHeaders } from '../../composables/useAdminHeaders'
+import Skeleton from '../../components/ui/Skeleton.vue'
 
 const { getHeaders } = useAdminHeaders()
 
@@ -40,7 +41,13 @@ onMounted(fetchStats)
   <div class="admin-dashboard">
     <h2 class="page-title">Dashboard Overview</h2>
 
-    <div v-if="loading" class="loading">Memuat data...</div>
+    <div v-if="loading" class="stats-grid">
+      <div v-for="i in 6" :key="i" class="stat-card">
+        <Skeleton width="90px" height="13px" radius="6px" />
+        <div class="stat-skeleton-gap" />
+        <Skeleton width="70px" height="26px" radius="8px" />
+      </div>
+    </div>
     <div v-else-if="error" class="error-msg">{{ error }}</div>
 
     <div v-else-if="stats" class="stats-grid">
@@ -80,6 +87,7 @@ onMounted(fetchStats)
 .stat-card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 20px; }
 .stat-label { font-size: 13px; color: #94a3b8; margin-bottom: 8px; }
 .stat-value { font-size: 28px; font-weight: 700; color: #f1f5f9; }
+.stat-skeleton-gap { height: 10px; }
 .stat-card.green { border-left: 3px solid #22c55e; }
 .stat-card.blue { border-left: 3px solid #3b82f6; }
 .stat-card.red { border-left: 3px solid #ef4444; }
