@@ -22,7 +22,7 @@ export const useInvoiceStore = defineStore('invoice', () => {
     loading.value = true
     error.value = null
     try {
-      const { data } = await api.get('/api/invoice/list')
+      const { data } = await api.post('/api/invoice/list')
       invoices.value = data.data?.invoices ?? []
     } catch (e) {
       error.value = (e as Error).message

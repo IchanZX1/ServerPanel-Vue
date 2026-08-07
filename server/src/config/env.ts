@@ -45,6 +45,9 @@ const envSchema = z.object({
   // Sociabuzz / Maelyn
   MAELYN_API_KEY: z.string(),
   MAELYN_BASE_URL: z.string().url(),
+  // Username Sociabuzz merchant (akun pemilik API key Maelyn) — sesuai panduan
+  // docs/mission/architecture-system-sociabuzz.md (createPaymentSociabuzz("ichanzx", ...))
+  MAELYN_SOCIABUZZ_USERNAME: z.string().default('ichanzx'),
 
   // Encryption
   ENCRYPTION_KEY: z.string().length(64),

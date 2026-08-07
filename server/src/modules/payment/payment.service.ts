@@ -39,7 +39,7 @@ export async function createSociabuzzPayment(data: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      username: user.username,
+      username: env.MAELYN_SOCIABUZZ_USERNAME,
       fullname: user.name,
       email: user.email,
       amount: data.amount,
@@ -199,12 +199,10 @@ export async function pollPaymentStatus(
     const res = await fetch(redirectUrl, { signal: AbortSignal.timeout(10000) })
     const html = await res.text()
 
-    // Cek status dari konten halaman
-    const paid = html.toLowerCase().includes('pembayaran berhasil') ||
-                 html.toLowerCase().includes('payment success') ||
-                 html.toLowerCase().includes('sudah dibayar')
-    const expired = html.toLowerCase().includes('expired') ||
-                    html.toLowerCase().includes('kadaluarsa')
+    // Deteksi status dari <title> halaman — sesuai docs/mission/architecture-system-sociabuzz.md
+    const title = html.match(/<title>(.*?)<\/title>/i)?.[1] ?? ''
+    const paid = /payment successful/i.test(title)
+    const expired = /link expired/i.test(title)
 
     const newPollCount = currentPollCount + 1
 
