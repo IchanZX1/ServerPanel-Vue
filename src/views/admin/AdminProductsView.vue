@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { Plus, Pencil, Trash2 } from 'lucide-vue-next'
+import { Plus, Pencil, Trash2, Ban, Power } from 'lucide-vue-next'
 import api from '../../api'
 import { useAdminHeaders } from '../../composables/useAdminHeaders'
 
@@ -101,12 +101,25 @@ async function submitForm() {
   }
 }
 
-async function toggleProduct(id: string) {
-  if (!confirm('Nonaktifkan / hapus produk ini?')) return
+async function setAvailability(id: string, isAvailable: number) {
+  try {
+    await api.patch(`/api/admin/products/${id}`, { isAvailable }, { headers: getHeaders() })
+    fetchProducts()
+  } catch (err: unknown) {
+    const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Gagal mengubah status produk.'
+    alert(msg)
+  }
+}
+
+async function permanentlyDeleteProduct(id: string) {
+  if (!confirm('Hapus produk secara PERMANEN? Tindakan ini tidak dapat dibatalkan.')) return
   try {
     await api.delete(`/api/admin/products/${id}`, { headers: getHeaders() })
     fetchProducts()
-  } catch { alert('Gagal menonaktifkan produk.') }
+  } catch (err: unknown) {
+    const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Gagal menghapus produk.'
+    alert(msg)
+  }
 }
 
 onMounted(fetchProducts)
@@ -205,7 +218,29 @@ onMounted(fetchProducts)
             <td><span class="badge" :class="p.is_available ? 'active' : 'inactive'">{{ p.is_available ? 'Aktif' : 'Nonaktif' }}</span></td>
             <td class="actions">
               <button class="action-btn edit" @click="openEdit(p)" title="Edit"><Pencil :size="14" /></button>
-              <button class="action-btn danger" @click="toggleProduct(p.id)" title="Nonaktifkan"><Trash2 :size="14" /></button>
+              <button
+                v-if="p.is_available"
+                class="action-btn warn"
+                @click="setAvailability(p.id, 0)"
+                title="Nonaktifkan"
+              >
+                <Ban :size="14" />
+              </button>
+              <button
+                v-else
+                class="action-btn activate"
+                @click="setAvailability(p.id, 1)"
+                title="Aktifkan"
+              >
+                <Power :size="14" />
+              </button>
+              <button
+                class="action-btn danger"
+                @click="permanentlyDeleteProduct(p.id)"
+                title="Hapus permanen"
+              >
+                <Trash2 :size="14" />
+              </button>
             </td>
           </tr>
           <tr v-if="products.length === 0">
@@ -250,6 +285,10 @@ onMounted(fetchProducts)
 .action-btn { background: none; border: 1px solid transparent; border-radius: 6px; padding: 4px 8px; cursor: pointer; transition: all 0.15s; }
 .action-btn.edit { color: #3b82f6; border-color: rgba(59,130,246,0.3); }
 .action-btn.edit:hover { background: rgba(59,130,246,0.1); }
+.action-btn.warn { color: #f59e0b; border-color: rgba(245,158,11,0.3); }
+.action-btn.warn:hover { background: rgba(245,158,11,0.1); }
+.action-btn.activate { color: #22c55e; border-color: rgba(34,197,94,0.3); }
+.action-btn.activate:hover { background: rgba(34,197,94,0.1); }
 .action-btn.danger { color: #ef4444; border-color: rgba(239,68,68,0.3); }
 .action-btn.danger:hover { background: rgba(239,68,68,0.1); }
 </style>

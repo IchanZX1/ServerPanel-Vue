@@ -340,8 +340,17 @@ export async function updateProduct(req: Request, res: Response): Promise<void> 
 
 export async function deleteProduct(req: Request, res: Response): Promise<void> {
   try {
-    await repo.updateProduct(req.params['id'] as string, { isAvailable: 0 })
-    res.json({ success: true, message: 'Produk berhasil dinonaktifkan' })
+    const id = req.params['id'] as string
+    const refs = await repo.countProductReferences(id)
+    if (refs > 0) {
+      res.status(409).json({
+        success: false,
+        message: 'Produk masih digunakan oleh server / permintaan upgrade. Tidak dapat dihapus permanen. Gunakan tombol Nonaktifkan saja.',
+      })
+      return
+    }
+    await repo.hardDeleteProduct(id)
+    res.json({ success: true, message: 'Produk berhasil dihapus permanen' })
   } catch (err) {
     res.status(500).json({ success: false, message: (err as Error).message })
   }

@@ -305,6 +305,21 @@ export async function updateProduct(id: string, data: Partial<{
   )
 }
 
+export async function countProductReferences(id: string): Promise<number> {
+  const [rows] = await db.execute<RowDataPacket[]>(
+    `SELECT
+       (SELECT COUNT(*) FROM servers WHERE product_id = ?) +
+       (SELECT COUNT(*) FROM server_plan_change_requests
+         WHERE from_product_id = ? OR to_product_id = ?) AS refs`,
+    [id, id, id],
+  )
+  return Number(rows[0]?.refs ?? 0)
+}
+
+export async function hardDeleteProduct(id: string): Promise<void> {
+  await db.execute('DELETE FROM server_products WHERE id = ?', [id])
+}
+
 // ─── Vouchers ─────────────────────────────────────────────────────────────────
 
 export async function getAllVouchers() {
