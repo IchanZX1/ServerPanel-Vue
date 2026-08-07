@@ -1,0 +1,15 @@
+<script setup lang="ts">
+import AppLayout from './components/layout/AppLayout.vue'
+</script>
+
+<template>
+  <AppLayout />
+</template>
+
+<style>
+/* Reset & App container */
+#app {
+  width: 100%;
+  min-height: 100vh;
+}
+</style>

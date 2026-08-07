@@ -1,0 +1,16 @@
+# JWT RS256 Keys (JANGAN commit ke git)
+keys/private.pem
+keys/public.pem
+
+# Environment
+.env
+
+# Build output
+dist/
+
+# Dependencies
+node_modules/
+
+# Logs
+logs/
+*.log
