@@ -71,15 +71,18 @@ export async function createSociabuzzPayment(data: {
   }
 
   const payment = json.payment
-  const expiredTtl = typeof payment.expired_at === 'number'
+  // Masa aktif pembayaran dikunci ketat 3 menit (180 detik), apapun expiry dari Maelyn
+  const PAYMENT_TTL_SECONDS = 180
+  const maelynTtl = typeof payment.expired_at === 'number'
     ? payment.expired_at
     : Math.max(Math.floor((new Date(payment.expired_at).getTime() - Date.now()) / 1000), 60)
-  const expiredAt = new Date(Date.now() + expiredTtl * 1000)
+  const ttl = Math.min(maelynTtl, PAYMENT_TTL_SECONDS)
+  const expiredAt = new Date(Date.now() + ttl * 1000)
 
   // Simpan qr_string (konten QRIS mentah) di Redis dengan TTL; PNG QR dibuat on-demand.
   let qrBase64: string | null = null
   if (payment.qr_string) {
-    await safeRedisSet(`qr:${data.invoiceId}`, payment.qr_string, expiredTtl)
+    await safeRedisSet(`qr:${data.invoiceId}`, payment.qr_string, ttl)
     try {
       qrBase64 = await QRCode.toDataURL(payment.qr_string)
     } catch (err) {
@@ -142,10 +145,19 @@ export async function checkPaymentStatus(paymentId: string, userId: string): Pro
   )
   const payment = rows[0] as {
     id: string; status: string; amount: number; paid_at: string | null;
-    redirect_url: string; invoice_id: string; poll_count: number
+    redirect_url: string; invoice_id: string; poll_count: number; expired_at: string
   } | undefined
 
   if (!payment) throw new Error('Payment tidak ditemukan')
+
+  // Jika masa aktif (3 menit) sudah lewat, tandai expired — tanpa perlu polling
+  if (payment.status === 'pending' && new Date(payment.expired_at) <= new Date()) {
+    await db.execute(
+      `UPDATE payments SET status = 'expired', updated_at = NOW() WHERE id = ? AND status = 'pending'`,
+      [payment.id],
+    )
+    payment.status = 'expired'
+  }
 
   // Jika masih pending — poll Maelyn
   if (payment.status === 'pending') {
@@ -206,9 +218,12 @@ export async function pollPaymentStatus(
 
     const newPollCount = currentPollCount + 1
 
+    // 3 menit masa aktif → maksimal 18 polling (10 detik sekali)
+    const MAX_POLLS = 18
+
     if (paid) {
       await markPaymentPaid(paymentId, invoiceId)
-    } else if (expired || newPollCount >= 36) {
+    } else if (expired || newPollCount >= MAX_POLLS) {
       await db.execute(
         `UPDATE payments SET status = 'expired', poll_count = ?, updated_at = NOW() WHERE id = ?`,
         [newPollCount, paymentId],

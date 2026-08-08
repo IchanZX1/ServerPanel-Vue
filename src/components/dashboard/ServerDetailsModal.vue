@@ -69,7 +69,9 @@ const redirectUrl = ref<string | null>(null)
 const qrBase64 = ref<string | null>(null)
 const paymentLoading = ref(false)
 const checkingStatus = ref(false)
-const timeLeft = ref(300)
+const timeLeft = ref(180)
+
+const RENEW_TIMER_SECONDS = 180 // 3 menit masa aktif pembayaran
 
 let timerInterval: ReturnType<typeof setInterval> | null = null
 let pollInterval: ReturnType<typeof setInterval> | null = null
@@ -172,7 +174,7 @@ const startRenew = async () => {
     qrBase64.value = d.qrBase64 ?? null
     const secondsLeft = Math.max(
       1,
-      Math.ceil((new Date(d.expiredAt).getTime() - Date.now()) / 1000),
+      Math.min(RENEW_TIMER_SECONDS, Math.ceil((new Date(d.expiredAt).getTime() - Date.now()) / 1000)),
     )
     startTimer(secondsLeft)
     startPolling()

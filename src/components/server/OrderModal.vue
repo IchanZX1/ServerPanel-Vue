@@ -60,8 +60,8 @@ const paymentError = ref<string | null>(null)
 const checkingStatus = ref(false)
 let pollInterval: ReturnType<typeof setInterval> | null = null
 
-// Countdown timer state (default 5 minutes = 300 seconds)
-const INITIAL_TIMER = 300 // 5 minutes in seconds
+// Countdown timer state (dikunci ketat 3 menit = 180 detik)
+const INITIAL_TIMER = 180 // 3 minutes in seconds
 const timeLeft = ref(INITIAL_TIMER)
 let timerInterval: ReturnType<typeof setInterval> | null = null
 
@@ -167,7 +167,7 @@ const createOrder = async () => {
     qrBase64.value = d.qrBase64 ?? null
     const secondsLeft = Math.max(
       1,
-      Math.ceil((new Date(d.expiredAt).getTime() - Date.now()) / 1000),
+      Math.min(INITIAL_TIMER, Math.ceil((new Date(d.expiredAt).getTime() - Date.now()) / 1000)),
     )
     startTimer(secondsLeft)
     startPolling()
@@ -523,7 +523,7 @@ onUnmounted(() => {
             </div>
             <h3 class="state-title">Transaction Expired</h3>
             <p class="state-desc">
-              The 5-minute payment window has timed out. Please configure your order again to proceed.
+              The 3-minute payment window has timed out. Please configure your order again to proceed.
             </p>
             <button class="retry-btn" @click="step = 'form'">Try Again</button>
           </div>
