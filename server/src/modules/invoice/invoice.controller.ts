@@ -4,8 +4,9 @@ import { ok, fail, forbidden } from '../../utils/responseBuilder.js'
 
 export async function list(req: Request, res: Response): Promise<void> {
   try {
-    const page = parseInt((req.body as { page?: string }).page ?? '1', 10) || 1
-    const limit = Math.min(parseInt((req.body as { limit?: string }).limit ?? '10', 10) || 10, 50)
+    const body = (req.body ?? {}) as { page?: string; limit?: string }
+    const page = parseInt(body.page ?? '1', 10) || 1
+    const limit = Math.min(parseInt(body.limit ?? '10', 10) || 10, 50)
     const result = await repo.getUserInvoices(req.user!.sub, page, limit)
     ok(res, result)
   } catch (err) {
@@ -15,7 +16,7 @@ export async function list(req: Request, res: Response): Promise<void> {
 
 export async function detail(req: Request, res: Response): Promise<void> {
   try {
-    const { invoiceId } = req.body as { invoiceId?: string }
+    const { invoiceId } = (req.body ?? {}) as { invoiceId?: string }
     if (!invoiceId) {
       fail(res, 'invoiceId diperlukan', 422)
       return

@@ -38,6 +38,18 @@ export async function getProductById(productId: string): Promise<ProductRow | nu
   return (rows[0] as ProductRow) ?? null
 }
 
+/**
+ * Ambil produk tanpa filter is_available — dipakai untuk perpanjangan/upgrade
+ * dari pelanggan lama yang produknya sudah dinonaktifkan admin.
+ */
+export async function getProductByIdAny(productId: string): Promise<ProductRow | null> {
+  const [rows] = await db.execute<RowDataPacket[]>(
+    `SELECT * FROM server_products WHERE id = ? LIMIT 1`,
+    [productId],
+  )
+  return (rows[0] as ProductRow) ?? null
+}
+
 export async function getAllProducts(): Promise<ProductRow[]> {
   const [rows] = await db.execute<RowDataPacket[]>(
     `SELECT * FROM server_products WHERE is_available = 1 ORDER BY sort_order ASC`,
@@ -205,7 +217,7 @@ export async function createInvoice(data: {
 export async function createInvoiceItem(data: {
   id: string
   invoiceId: string
-  productId: string
+  productId: string | null
   serverId: string | null
   description: string
   quantity: number
@@ -221,6 +233,17 @@ export async function createInvoiceItem(data: {
       data.description, data.quantity, data.unitPrice, data.total,
     ],
   )
+}
+
+export async function getLastServerUnitPrice(serverId: string): Promise<number | null> {
+  const [rows] = await db.execute<RowDataPacket[]>(
+    `SELECT unit_price FROM invoice_items
+     WHERE server_id = ? AND total_price > 0
+     ORDER BY created_at DESC LIMIT 1`,
+    [serverId],
+  )
+  const row = rows[0] as { unit_price: number } | undefined
+  return row ? Number(row.unit_price) : null
 }
 
 export async function getNextInvoiceNumber(): Promise<string> {

@@ -27,7 +27,7 @@ export async function list(req: Request, res: Response): Promise<void> {
 
 export async function detail(req: Request, res: Response): Promise<void> {
   try {
-    const { serverId } = req.body as { serverId?: string }
+    const { serverId } = (req.body ?? {}) as { serverId?: string }
     if (!serverId) {
       fail(res, 'serverId diperlukan', 422)
       return

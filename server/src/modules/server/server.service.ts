@@ -123,10 +123,15 @@ export async function requestRenewal(data: {
     await repo.expireRenewal(pendingRenewal.renewal_id)
   }
 
-  const product = server.product_id ? await repo.getProductById(server.product_id) : null
-  if (!product) throw new Error('Produk server tidak ditemukan')
+  // Harga produk — fallback ke harga invoice terakhir jika produk dihapus/dinonaktifkan
+  let priceSnapshot: number | null = server.product_id
+    ? (await repo.getProductByIdAny(server.product_id))?.price ?? null
+    : null
+  if (priceSnapshot === null) {
+    priceSnapshot = await repo.getLastServerUnitPrice(data.serverId)
+  }
+  if (priceSnapshot === null) throw new Error('Produk server tidak ditemukan')
 
-  const priceSnapshot = product.price
   const totalPrice = data.extendMonths * priceSnapshot
 
   // Hitung new_active_until — GREATEST(active_until, CURDATE())
@@ -153,7 +158,7 @@ export async function requestRenewal(data: {
   await repo.createInvoiceItem({
     id: uuid(),
     invoiceId,
-    productId: product.id,
+    productId: server.product_id ?? null,
     serverId: data.serverId,
     description: `Perpanjangan server "${server.name}" — ${data.extendMonths} bulan`,
     quantity: data.extendMonths,
