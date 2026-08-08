@@ -4,6 +4,7 @@ import { Plus, Pencil, Trash2, Ban, Power } from 'lucide-vue-next'
 import api from '../../api'
 import { useAdminHeaders } from '../../composables/useAdminHeaders'
 import TableSkeleton from '../../components/ui/TableSkeleton.vue'
+import { formatMB } from '../../utils/formatSpecs'
 
 const { getHeaders } = useAdminHeaders()
 
@@ -35,7 +36,9 @@ const form = ref({
 })
 
 function allocLabel(val: number, unit: string): string {
-  return val === 0 ? 'Unlimited' : `${val} ${unit}`
+  if (val === 0) return 'Unlimited'
+  if (unit === 'MB') return formatMB(val)
+  return `${val} ${unit}`
 }
 
 async function fetchProducts() {

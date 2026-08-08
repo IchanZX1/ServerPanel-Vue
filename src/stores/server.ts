@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import api from '../api'
+import { formatMB, formatCPU } from '../utils/formatSpecs'
 import type { ProductItem } from '../data/dummyData'
 
 export const useServerStore = defineStore('server', () => {
@@ -26,10 +27,10 @@ export const useServerStore = defineStore('server', () => {
           price: String(p['price'] ?? '0'),
           period: p['billingPeriod'] ?? 'monthly',
           specs: {
-            cpu: p['cpuAlloc'] ?? '-',
-            ram: p['ramAlloc'] ?? '-',
-            storage: p['storageAlloc'] ?? '-',
-            bandwidth: p['bandwidthAlloc'] ?? '-',
+            cpu: formatCPU(Number(p['cpuAlloc'] ?? 0)),
+            ram: formatMB(Number(p['ramAlloc'] ?? 0)),
+            storage: formatMB(Number(p['storageAlloc'] ?? 0)),
+            bandwidth: String(p['bandwidthAlloc'] ?? 'Unlimited'),
           },
         }))
       }
