@@ -25,7 +25,7 @@ export async function listServerPage(userId: string) {
     repo.getUserServers(userId),
   ])
 
-  const mappedServers = servers.map((s: ServerRow & { product_name?: string; product_price?: number }) => ({
+  const mappedServers = servers.map((s: ServerRow & { product_name?: string; product_price?: number; last_unit_price?: number }) => ({
     id: s.id,
     name: s.name,
     status: s.status,
@@ -36,7 +36,7 @@ export async function listServerPage(userId: string) {
     activeUntil: s.active_until,
     panelUrl: env.PTERO_BASE_URL,
     panelUsername: s.panel_username,
-    productPrice: s.product_price ?? null,
+    productPrice: s.product_price ?? s.last_unit_price ?? null,
     ...(s.status === 'suspended' && s.suspended_at
       ? { suspendedAt: s.suspended_at, graceDeadline: getGraceDeadline(s.suspended_at) }
       : {}),

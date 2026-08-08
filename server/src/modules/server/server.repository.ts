@@ -20,7 +20,10 @@ export async function getServerByIdAdmin(serverId: string): Promise<ServerRow | 
 
 export async function getUserServers(userId: string): Promise<ServerRow[]> {
   const [rows] = await db.execute<RowDataPacket[]>(
-    `SELECT s.*, sp.name as product_name, sp.price as product_price
+    `SELECT s.*, sp.name as product_name, sp.price as product_price,
+            (SELECT unit_price FROM invoice_items
+             WHERE server_id = s.id AND total_price > 0
+             ORDER BY created_at DESC LIMIT 1) as last_unit_price
      FROM servers s
      LEFT JOIN server_products sp ON sp.id = s.product_id
      WHERE s.user_id = ? AND s.deleted_at IS NULL AND s.status != 'terminated'
