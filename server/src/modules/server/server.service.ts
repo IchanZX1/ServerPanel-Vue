@@ -1,5 +1,6 @@
 import { v4 as uuid } from 'uuid'
 import * as repo from './server.repository.js'
+import { env } from '../../config/env.js'
 import type { ServerRow } from '../../types/index.js'
 
 function getStatusClass(status: string): string {
@@ -24,7 +25,7 @@ export async function listServerPage(userId: string) {
     repo.getUserServers(userId),
   ])
 
-  const mappedServers = servers.map((s: ServerRow & { product_name?: string }) => ({
+  const mappedServers = servers.map((s: ServerRow & { product_name?: string; product_price?: number }) => ({
     id: s.id,
     name: s.name,
     status: s.status,
@@ -33,6 +34,9 @@ export async function listServerPage(userId: string) {
     nodeVersion: s.node_version,
     storageType: s.storage_type,
     activeUntil: s.active_until,
+    panelUrl: env.PTERO_BASE_URL,
+    panelUsername: s.panel_username,
+    productPrice: s.product_price ?? null,
     ...(s.status === 'suspended' && s.suspended_at
       ? { suspendedAt: s.suspended_at, graceDeadline: getGraceDeadline(s.suspended_at) }
       : {}),
@@ -73,6 +77,7 @@ export async function getServerDetail(serverId: string, userId: string) {
     status: server.status,
     statusClass: getStatusClass(server.status),
     ipAddress: server.ip_address,
+    panelUrl: env.PTERO_BASE_URL,
     panelUsername: server.panel_username,
     nodeVersion: server.node_version,
     storageType: server.storage_type,
@@ -106,9 +111,16 @@ export async function requestRenewal(data: {
     }
   }
 
-  // Cek tidak ada renewal pending
-  if (await repo.hasPendingRenewal(data.serverId)) {
-    throw new Error('Sudah ada permintaan renewal yang sedang menunggu pembayaran')
+  // Cek tidak ada renewal pending — tapi izinkan override jika renewal lama
+  // sudah tidak bisa dibayar (invoice tidak pending / payment expired / belum ada payment)
+  const pendingRenewal = await repo.findPendingRenewal(data.serverId)
+  if (pendingRenewal) {
+    const stale =
+      pendingRenewal.invoice_status !== 'pending' || pendingRenewal.payment_status !== 'pending'
+    if (!stale) {
+      throw new Error('Sudah ada permintaan renewal yang sedang menunggu pembayaran')
+    }
+    await repo.expireRenewal(pendingRenewal.renewal_id)
   }
 
   const product = server.product_id ? await repo.getProductById(server.product_id) : null

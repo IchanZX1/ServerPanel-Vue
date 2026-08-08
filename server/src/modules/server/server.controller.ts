@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express'
 import * as service from './server.service.js'
 import { ok, fail, forbidden } from '../../utils/responseBuilder.js'
+import { createSociabuzzPayment } from '../payment/payment.service.js'
 import { z } from 'zod'
 
 const renewSchema = z.object({
@@ -57,7 +58,28 @@ export async function renew(req: Request, res: Response): Promise<void> {
       userId: req.user!.sub,
       extendMonths: parsed.data.extendMonths,
     })
-    ok(res, result)
+
+    // Buat payment Maelyn (QRIS) untuk invoice renewal
+    let payment
+    try {
+      payment = await createSociabuzzPayment({
+        invoiceId: result.invoiceId,
+        userId: req.user!.sub,
+        amount: result.totalPrice,
+        description: `Pembayaran ${result.invoiceNumber}`,
+        paymentType: 'renewal',
+      })
+    } catch (err) {
+      // Gagal membuat payment → tandai renewal sebagai expired agar bisa diulang
+      const { db } = await import('../../config/db.js')
+      await db.execute(
+        `UPDATE server_renewal_requests SET status = 'expired', updated_at = NOW() WHERE id = ?`,
+        [result.renewalRequestId],
+      ).catch(() => {})
+      throw err
+    }
+
+    ok(res, { ...result, ...payment })
   } catch (err) {
     fail(res, (err as Error).message)
   }

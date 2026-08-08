@@ -76,6 +76,13 @@ export async function updatePassword(userId: string, passwordHash: string): Prom
   )
 }
 
+export async function updatePterodactylUserId(userId: string, pterodactylUserId: number): Promise<void> {
+  await db.execute(
+    'UPDATE users SET pterodactyl_user_id = ?, updated_at = NOW() WHERE id = ?',
+    [pterodactylUserId, userId],
+  )
+}
+
 // ─── Refresh tokens ───────────────────────────────────────────────────────────
 
 export async function saveRefreshToken(data: {

@@ -94,6 +94,34 @@ export async function hasPendingRenewal(serverId: string): Promise<boolean> {
   return rows.length > 0
 }
 
+/**
+ * Ambil renewal pending beserta status invoice & payment aktifnya,
+ * dipakai untuk menentukan apakah renewal lama bisa di-override (retry).
+ */
+export async function findPendingRenewal(serverId: string): Promise<{
+  renewal_id: string
+  invoice_status: string
+  payment_status: string | null
+} | null> {
+  const [rows] = await db.execute<RowDataPacket[]>(
+    `SELECT srr.id as renewal_id, i.status as invoice_status, p.status as payment_status
+     FROM server_renewal_requests srr
+     JOIN invoices i ON i.id = srr.invoice_id
+     LEFT JOIN payments p ON p.id = i.active_payment_id
+     WHERE srr.server_id = ? AND srr.status = 'pending'
+     LIMIT 1`,
+    [serverId],
+  )
+  return (rows[0] as { renewal_id: string; invoice_status: string; payment_status: string | null }) ?? null
+}
+
+export async function expireRenewal(renewalId: string): Promise<void> {
+  await db.execute(
+    `UPDATE server_renewal_requests SET status = 'expired', updated_at = NOW() WHERE id = ? AND status = 'pending'`,
+    [renewalId],
+  )
+}
+
 export async function createRenewalRequest(data: {
   id: string
   serverId: string

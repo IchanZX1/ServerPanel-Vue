@@ -65,8 +65,12 @@ export const useDashboardStore = defineStore('dashboard', () => {
         activeUntil: s['activeUntil'] ?? '-',
         createdDate: s['createdDate'] ?? '-',
         ipAddress: s['ipAddress'] ?? undefined,
+        panelUrl: s['panelUrl'] ?? undefined,
         panelUsername: s['panelUsername'] ?? undefined,
         panelPassword: s['panelPassword'] ?? undefined,
+        productPrice: s['productPrice'] !== undefined && s['productPrice'] !== null
+          ? Number(s['productPrice'])
+          : undefined,
         specs: s['specs'] ?? undefined,
       }))
     } catch (e) {

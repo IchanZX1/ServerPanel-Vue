@@ -7,8 +7,10 @@ export interface ServerItem {
   activeUntil: string
   createdDate: string
   ipAddress?: string
+  panelUrl?: string
   panelUsername?: string
   panelPassword?: string
+  productPrice?: number
   specs?: {
     cpu: string
     ram: string
@@ -97,8 +99,10 @@ export const dashboardData = {
       activeUntil: '29 Agustus 2026',
       createdDate: '29 Agustus 2026',
       ipAddress: '103.147.222.10:2022',
+      panelUrl: 'https://panel.zxcoderid.com',
       panelUsername: 'ichanzx_node01',
       panelPassword: 'P@ssw0rdZXcoder2026!',
+      productPrice: 10000,
       specs: {
         cpu: '30% CPU Allocation',
         ram: '1 GB RAM Allocation',
@@ -115,8 +119,10 @@ export const dashboardData = {
       activeUntil: '30 Juli 2026',
       createdDate: '30 Juli 2026',
       ipAddress: '103.147.222.11:2022',
+      panelUrl: 'https://panel.zxcoderid.com',
       panelUsername: 'ichanzx_wabot',
       panelPassword: 'WaBotSecurePassword#99',
+      productPrice: 10000,
       specs: {
         cpu: '30% CPU Allocation',
         ram: '1 GB RAM Allocation',

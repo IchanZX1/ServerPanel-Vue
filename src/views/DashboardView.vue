@@ -115,6 +115,7 @@ onMounted(async () => {
       :is-open="isDetailsModalOpen"
       :server="selectedServer"
       @close="handleCloseDetailsModal"
+      @renewed="handleProvisioned"
     />
   </div>
 </template>

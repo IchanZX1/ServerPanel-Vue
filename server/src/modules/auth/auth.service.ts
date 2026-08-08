@@ -30,6 +30,25 @@ export async function signup(input: SignupInput) {
     avatarInitial,
   })
 
+  // Buat user Pterodactyl dengan email + password yang SAMA seperti akun panel ini.
+  // Best-effort — jangan sampai gagal mendaftar jika Pterodactyl sedang down;
+  // jika gagal, provisioning server akan membuat user Pterodactyl nanti.
+  try {
+    const { createPterodactylUser, sanitizePteroUsername, sanitizePteroName } =
+      await import('../pterodactyl/pterodactyl.service.js')
+    const nameParts = input.name.split(/\s+/)
+    const pteroUser = await createPterodactylUser({
+      email: input.email,
+      username: sanitizePteroUsername(input.username),
+      firstName: sanitizePteroName(nameParts[0] ?? '', input.username),
+      lastName: sanitizePteroName(nameParts.slice(1).join(' ') || '-', input.username),
+      password: input.password,
+    })
+    await repo.updatePterodactylUserId(userId, pteroUser.id)
+  } catch (err) {
+    console.error('[signup] pterodactyl user creation failed:', (err as Error).message)
+  }
+
   return { userId, message: 'Registrasi berhasil. Silakan login.' }
 }
 
@@ -190,6 +209,15 @@ export async function resetPassword(input: ResetPasswordInput) {
   await repo.updatePassword(token.user_id, passwordHash)
   await repo.markResetTokenUsed(tokenHash)
   await repo.revokeAllUserRefreshTokens(token.user_id)
+
+  // Sync password baru ke Pterodactyl agar login panel tetap sama dengan akun ini
+  const user = await repo.findUserById(token.user_id)
+  if (user?.pterodactyl_user_id) {
+    const { updatePterodactylUserPassword } = await import('../pterodactyl/pterodactyl.service.js')
+    await updatePterodactylUserPassword(user.pterodactyl_user_id, input.newPassword).catch(
+      (e: Error) => console.error('[resetPassword] pterodactyl sync failed:', e.message),
+    )
+  }
 
   return { message: 'Password berhasil diubah. Silakan login dengan password baru.' }
 }
