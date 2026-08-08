@@ -169,9 +169,12 @@ export async function requestRenewal(data: {
   const renewalId = uuid()
   await repo.createRenewalRequest({
     id: renewalId,
+    userId: data.userId,
     serverId: data.serverId,
     invoiceId,
     extendMonths: data.extendMonths,
+    priceSnapshot,
+    totalPrice,
     newActiveUntil,
   })
 

@@ -129,23 +129,29 @@ export async function findPendingRenewal(serverId: string): Promise<{
 
 export async function expireRenewal(renewalId: string): Promise<void> {
   await db.execute(
-    `UPDATE server_renewal_requests SET status = 'expired', updated_at = NOW() WHERE id = ? AND status = 'pending'`,
+    `UPDATE server_renewal_requests SET status = 'cancelled', cancelled_at = NOW() WHERE id = ? AND status = 'pending'`,
     [renewalId],
   )
 }
 
 export async function createRenewalRequest(data: {
   id: string
+  userId: string
   serverId: string
   invoiceId: string
   extendMonths: number
+  priceSnapshot: number
+  totalPrice: number
   newActiveUntil: Date
 }): Promise<void> {
   await db.execute(
     `INSERT INTO server_renewal_requests
-     (id, server_id, invoice_id, extend_months, new_active_until, status)
-     VALUES (?, ?, ?, ?, ?, 'pending')`,
-    [data.id, data.serverId, data.invoiceId, data.extendMonths, data.newActiveUntil],
+     (id, server_id, user_id, invoice_id, extend_months, price_snapshot, total_price, new_active_until, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+    [
+      data.id, data.serverId, data.userId, data.invoiceId, data.extendMonths,
+      data.priceSnapshot, data.totalPrice, data.newActiveUntil,
+    ],
   )
 }
 

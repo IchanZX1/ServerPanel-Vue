@@ -70,10 +70,10 @@ export async function renew(req: Request, res: Response): Promise<void> {
         paymentType: 'renewal',
       })
     } catch (err) {
-      // Gagal membuat payment → tandai renewal sebagai expired agar bisa diulang
+      // Gagal membuat payment → tandai renewal sebagai cancelled agar bisa diulang
       const { db } = await import('../../config/db.js')
       await db.execute(
-        `UPDATE server_renewal_requests SET status = 'expired', updated_at = NOW() WHERE id = ?`,
+        `UPDATE server_renewal_requests SET status = 'cancelled', cancelled_at = NOW() WHERE id = ?`,
         [result.renewalRequestId],
       ).catch(() => {})
       throw err
